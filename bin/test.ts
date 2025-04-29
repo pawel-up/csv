@@ -6,7 +6,7 @@ configure({
   suites: [
     {
       name: 'unit',
-      files: ['tests/**/*.spec.ts'],
+      files: ['tests/unit/**/*.spec.ts'],
     },
   ],
   plugins: [assert()],

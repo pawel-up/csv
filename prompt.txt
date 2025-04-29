@@ -1,9 +1,0 @@
-Help me create a CSV file parser library that works natively in the web environment.
-It doesn't use any node.js apis. Here are my business requirements:
-- It allows to detect data types (boolean, null, date (and its format), number, anything else we can detect); for a number, we need to know if values are integers or decimals.
-- It generates an array of values. The user options would decide whether the read output is inserted into an array (each array item corresponds to a column index) or an object (a key is the column name).
-- It needs to account for different encodings of the original file. The file will be a `File` object from web APIs.
-- We need to account for different line endings
-- We need to perform some quote detection (or use the configured option)
-- We need to account for comments (comment symbol should be configured unless there is a universal comment symbol for CSV) and filter them out.
-- Alongside with the file content (columns + each row) we also want to generate a data structure report. It should contain the detected data types.
