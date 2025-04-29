@@ -1,5 +1,6 @@
 import { test } from '@japa/runner'
-import { type DateFormats, detectDataType } from '../../src/lib/DataType.js'
+import { detectDataType } from '../../src/lib/DataType.js'
+import { type DateFormats } from '../../src/index.js'
 
 const dateFormats: DateFormats = {
   date: ['YYYY-MM-DD', 'MM/DD/YYYY', 'DD.MM.YYYY'],
@@ -9,7 +10,7 @@ const dateFormats: DateFormats = {
 
 test.group('DataType.detectDataType()', () => {
   test('should detect null', ({ assert }) => {
-    assert.deepEqual(detectDataType(null, dateFormats), { type: 'null', value: null })
+    assert.deepEqual(detectDataType(null, dateFormats), { type: 'string', value: '' })
   })
 
   test('should detect empty string as string', ({ assert }) => {

@@ -1,3 +1,11 @@
+import { DateFormats } from './types.js'
+
+export const DefaultDateFormats: DateFormats = {
+  date: ['YYYY-MM-DD', 'MM/DD/YYYY', 'DD.MM.YYYY'],
+  time: ['HH:mm:ss', 'HH:mm', 'HH:mm:ss.SSS'],
+  datetime: ['YYYY-MM-DD HH:mm:ss', 'YYYY-MM-DDTHH:mm:ssZ', 'YYYY-MM-DDTHH:mm:ss.SSSZ'],
+}
+
 /**
  * Creates a new CSVParser instance.
  */
@@ -19,8 +27,7 @@ export interface CSVOptions {
   comment?: string
   /**
    * Whether the first row is a header.
-   * When set to `true`, the `outputAsObject` option will not have any effect.
-   
+   * When set to `true`, the `asObject()` method will throw an error.
    * @default true
    */
   header?: boolean
@@ -30,16 +37,19 @@ export interface CSVOptions {
    */
   encoding?: string
   /**
-   * Whether to output as an object (key-value) or array.
-   * Note that this has no effect if the header option is set to false.
-   * @default false
-   */
-  outputAsObject?: boolean
-  /**
    * Possible date formats to detect.
-   * @default ['YYYY-MM-DD', 'MM/DD/YYYY', 'DD.MM.YYYY']
    */
-  dateFormats?: string[]
+  dateFormats?: DateFormats
+  /**
+   * The maximum number of rows to parse.
+   * When set, the parser will stop parsing after this number of rows.
+   * This is useful for testing or when you want to limit the amount of data
+   * processed.
+   * Note that the header row is always included. This value represents the
+   * maximum number of data rows read after the header, even when header is missing.
+   * @default undefined
+   */
+  maxRows?: number
 }
 
 export class CSVParserOptions {
@@ -48,16 +58,16 @@ export class CSVParserOptions {
   #comment: string
   #header: boolean
   #encoding: string
-  #outputAsObject: boolean
-  #dateFormats: string[]
+  #dateFormats: DateFormats
+  #maxRows: number | undefined
   constructor(init: Partial<CSVOptions> = {}) {
     this.#delimiter = init.delimiter ?? ','
     this.#quote = init.quote ?? '"'
     this.#comment = init.comment ?? '#'
     this.#header = init.header ?? true
     this.#encoding = init.encoding ?? 'utf-8'
-    this.#outputAsObject = init.outputAsObject ?? false
-    this.#dateFormats = init.dateFormats ?? ['YYYY-MM-DD', 'MM/DD/YYYY', 'DD.MM.YYYY']
+    this.#dateFormats = init.dateFormats ?? DefaultDateFormats
+    this.#maxRows = init.maxRows
   }
 
   /**
@@ -75,6 +85,7 @@ export class CSVParserOptions {
   get quote(): string {
     return this.#quote
   }
+
   /**
    * The comment character.
    * @default '#'
@@ -82,6 +93,7 @@ export class CSVParserOptions {
   get comment(): string {
     return this.#comment
   }
+
   /**
    * Whether the first row is a header.
    * @default true
@@ -89,6 +101,7 @@ export class CSVParserOptions {
   get header(): boolean {
     return this.#header
   }
+
   /**
    * The file encoding.
    * @default 'utf-8'
@@ -96,18 +109,19 @@ export class CSVParserOptions {
   get encoding(): string {
     return this.#encoding
   }
-  /**
-   * Whether to output as an object (key-value) or array.
-   * @default false
-   */
-  get outputAsObject(): boolean {
-    return this.#outputAsObject
-  }
+
   /**
    * Possible date formats to detect.
-   * @default ['YYYY-MM-DD', 'MM/DD/YYYY', 'DD.MM.YYYY']
    */
-  get dateFormats(): string[] {
+  get dateFormats(): DateFormats {
     return this.#dateFormats
+  }
+
+  /**
+   * The maximum number of rows to parse.
+   * @default undefined
+   */
+  get maxRows(): number | undefined {
+    return this.#maxRows
   }
 }

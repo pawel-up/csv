@@ -1,10 +1,12 @@
+import type { DateFormats } from '../types.js'
+
 const regStore = new Map<string, RegExp>()
 
 export interface DataType {
   /**
    * The type of the data.
    */
-  type: 'null' | 'string' | 'number' | 'boolean' | 'date' | 'time' | 'datetime'
+  type: 'string' | 'number' | 'boolean' | 'date' | 'time' | 'datetime'
   /**
    * The format of the number, if applicable.
    */
@@ -12,30 +14,12 @@ export interface DataType {
   /**
    * Dates are returned as strings.
    */
-  value: string | number | boolean | null
-}
-
-export interface DateFormats {
-  /**
-   * Date formats representing the `date` type.
-   * @default ['YYYY-MM-DD', 'MM/DD/YYYY', 'DD.MM.YYYY']
-   */
-  date: string[]
-  /**
-   * Date formats representing the `time` data type.
-   * @default ['HH:mm:ss', 'HH:mm', 'HH:mm:ss.SSS']
-   */
-  time: string[]
-  /**
-   * Date formats representing the `datetime` data type.
-   * @default ['YYYY-MM-DD HH:mm:ss', 'YYYY-MM-DDTHH:mm:ssZ', 'YYYY-MM-DDTHH:mm:ss.SSSZ']
-   */
-  datetime: string[]
+  value: string | number | boolean
 }
 
 export function detectDataType(value: string | null | undefined, dateFormats?: DateFormats): DataType {
   if (value === null || value === undefined) {
-    return { type: 'null', value: null }
+    return { type: 'string', value: '' }
   }
   const trimmedValue = value.trim()
   if (trimmedValue === '') {
@@ -49,11 +33,28 @@ export function detectDataType(value: string | null | undefined, dateFormats?: D
 
   const num = Number(trimmedValue)
   if (!isNaN(num)) {
-    return { type: 'number', format: Number.isInteger(num) ? 'integer' : 'decimal', value: num }
+    const format = Number.isInteger(num) && !trimmedValue.includes('.') ? 'integer' : 'decimal'
+    return { type: 'number', format, value: num }
   }
   if (!dateFormats) {
     return { type: 'string', value: trimmedValue }
   }
+  // The time won't be recognized by the `Date` constructor, so we need to check for time formats first.
+  for (const format of dateFormats.time) {
+    const regex = createDateTimeRegex(format)
+    if (regex.test(trimmedValue)) {
+      return { type: 'time', value: trimmedValue }
+    }
+  }
+  // The `DD.MM.YYYY` format is not recognized by the `Date` constructor, so we need to check for date formats first.
+  for (const format of dateFormats.date) {
+    const regex = createDateTimeRegex(format)
+    if (regex.test(trimmedValue)) {
+      return { type: 'date', value: trimmedValue }
+    }
+  }
+
+  // Basically only datetime or string left
   const date = new Date(trimmedValue)
   if (isNaN(date.getTime())) {
     return { type: 'string', value: trimmedValue }
@@ -63,20 +64,6 @@ export function detectDataType(value: string | null | undefined, dateFormats?: D
     const regex = createDateTimeRegex(format)
     if (regex.test(trimmedValue)) {
       return { type: 'datetime', value: trimmedValue }
-    }
-  }
-
-  for (const format of dateFormats.date) {
-    const regex = createDateTimeRegex(format)
-    if (regex.test(trimmedValue)) {
-      return { type: 'date', value: trimmedValue }
-    }
-  }
-
-  for (const format of dateFormats.time) {
-    const regex = createDateTimeRegex(format)
-    if (regex.test(trimmedValue)) {
-      return { type: 'time', value: trimmedValue }
     }
   }
   return { type: 'string', value: trimmedValue }
@@ -107,7 +94,6 @@ export function createDateTimeRegex(format: string): RegExp {
     .replace(/Z/g, 'Z') // Timezone Z
     .replace(/T/g, 'T') // Timezone T
     .replace(/\s/g, '\\s') // Whitespace
-
   // Create and return the regex
   const regex = new RegExp(`^${regexString}$`)
   regStore.set(format, regex)

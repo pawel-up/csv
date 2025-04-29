@@ -1,0 +1,39 @@
+{
+  // Use IntelliSense to learn about possible attributes.
+  // Hover to view descriptions of existing attributes.
+  // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Japa Tests",
+      "program": "${workspaceFolder}/bin/test.ts",
+      "args": [],
+      "runtimeArgs": [
+        "--import",
+        "ts-node-maintained/register/esm",
+        "--enable-source-maps"
+      ],
+      "skipFiles": ["<node_internals>/**"]
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Specific test",
+      "program": "${workspaceFolder}/bin/test.ts",
+      "args": [
+        "--files",
+        "tests/unit/parser.spec.ts",
+        "--tests",
+        "should parse a CSV string into an array of objects"
+      ],
+      "runtimeArgs": [
+        "--import",
+        "ts-node-maintained/register/esm",
+        "--enable-source-maps"
+      ],
+      "skipFiles": ["<node_internals>/**"]
+    }
+  ]
+}
