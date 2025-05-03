@@ -1,7 +1,8 @@
 /* eslint-disable no-console */
 import { Suite, CliReporter, FileReporter, compareSuites } from '@pawel-up/benchmark'
-import { generateCSV, getLatestBenchmark, historyPath } from './helper.js'
+import { createChunkedStream, getLatestBenchmark, historyPath } from './helper.js'
 import { CSVParser } from '../src/index.js'
+import { generateCSV } from '../tests/Utils.js'
 
 const cli = new CliReporter({ format: 'short' })
 const file = new FileReporter({ outputDir: historyPath })
@@ -11,9 +12,9 @@ const suite = new Suite('CVS', { minSamples: 8, maxExecutionTime: 15000, maxIter
 const smallData = generateCSV(100, 5)
 const mediumData = generateCSV(1000, 10)
 const largeData = generateCSV(10000, 15)
-const smallDataNoHeader = generateCSV(100, 5, false)
-const mediumDataNoHeader = generateCSV(1000, 10, false)
-const largeDataNoHeader = generateCSV(10000, 15, false)
+const smallDataNoHeader = generateCSV(100, 5, { withHeader: false })
+const mediumDataNoHeader = generateCSV(1000, 10, { withHeader: false })
+const largeDataNoHeader = generateCSV(10000, 15, { withHeader: false })
 
 const smallDataMaxRows = generateCSV(100, 5)
 const mediumDataMaxRows = generateCSV(1000, 10)
@@ -38,80 +39,80 @@ const largeDataCustomDateFormats = generateCSV(10000, 15)
 const latest = await getLatestBenchmark()
 
 const result = await suite
-  // asObject tests
-  .add('asObject/small', async () => {
+  // parse tests
+  .add('parse/small', async () => {
     const parser = new CSVParser()
-    await parser.asObject(smallData)
+    await parser.parse(smallData)
   })
-  .add('asObject/medium', async () => {
+  .add('parse/medium', async () => {
     const parser = new CSVParser()
-    await parser.asObject(mediumData)
+    await parser.parse(mediumData)
   })
-  .add('asObject/large', async () => {
+  .add('parse/large', async () => {
     const parser = new CSVParser()
-    await parser.asObject(largeData)
+    await parser.parse(largeData)
   })
-  .add('asObject/small/no header', async () => {
+  .add('parse/small/no header', async () => {
     const parser = new CSVParser({ header: false })
-    await parser.asObject(smallDataNoHeader)
+    await parser.parse(smallDataNoHeader)
   })
-  .add('asObject/medium/no header', async () => {
+  .add('parse/medium/no header', async () => {
     const parser = new CSVParser({ header: false })
-    await parser.asObject(mediumDataNoHeader)
+    await parser.parse(mediumDataNoHeader)
   })
-  .add('asObject/large/no header', async () => {
+  .add('parse/large/no header', async () => {
     const parser = new CSVParser({ header: false })
-    await parser.asObject(largeDataNoHeader)
+    await parser.parse(largeDataNoHeader)
   })
-  .add('asObject/small data/max rows', async () => {
+  .add('parse/S/max rows', async () => {
     const parser = new CSVParser({ maxRows: 50 })
-    await parser.asObject(smallDataMaxRows)
+    await parser.parse(smallDataMaxRows)
   })
-  .add('asObject/medium data/max rows', async () => {
+  .add('parse/M/max rows', async () => {
     const parser = new CSVParser({ maxRows: 500 })
-    await parser.asObject(mediumDataMaxRows)
+    await parser.parse(mediumDataMaxRows)
   })
-  .add('asObject/large data/max rows', async () => {
+  .add('parse/L/max rows', async () => {
     const parser = new CSVParser({ maxRows: 5000 })
-    await parser.asObject(largeDataMaxRows)
+    await parser.parse(largeDataMaxRows)
   })
-  .add('asObject/small data/custom delimiter', async () => {
+  .add('parse/S/delimiter', async () => {
     const parser = new CSVParser({ delimiter: ';' })
-    await parser.asObject(smallDataCustomDelimiter.replace(/,/g, ';'))
+    await parser.parse(smallDataCustomDelimiter.replace(/,/g, ';'))
   })
-  .add('asObject/medium data/custom delimiter', async () => {
+  .add('parse/M/delimiter', async () => {
     const parser = new CSVParser({ delimiter: ';' })
-    await parser.asObject(mediumDataCustomDelimiter.replace(/,/g, ';'))
+    await parser.parse(mediumDataCustomDelimiter.replace(/,/g, ';'))
   })
-  .add('asObject/large data/custom delimiter', async () => {
+  .add('parse/L/delimiter', async () => {
     const parser = new CSVParser({ delimiter: ';' })
-    await parser.asObject(largeDataCustomDelimiter.replace(/,/g, ';'))
+    await parser.parse(largeDataCustomDelimiter.replace(/,/g, ';'))
   })
-  .add('asObject/small data/custom quote', async () => {
+  .add('parse/S/quote', async () => {
     const parser = new CSVParser({ quote: "'" })
-    await parser.asObject(smallDataCustomQuote.replace(/"/g, "'"))
+    await parser.parse(smallDataCustomQuote.replace(/"/g, "'"))
   })
-  .add('asObject/medium data/custom quote', async () => {
+  .add('parse/M/quote', async () => {
     const parser = new CSVParser({ quote: "'" })
-    await parser.asObject(mediumDataCustomQuote.replace(/"/g, "'"))
+    await parser.parse(mediumDataCustomQuote.replace(/"/g, "'"))
   })
-  .add('asObject/large data/custom quote', async () => {
+  .add('parse/L/quote', async () => {
     const parser = new CSVParser({ quote: "'" })
-    await parser.asObject(largeDataCustomQuote.replace(/"/g, "'"))
+    await parser.parse(largeDataCustomQuote.replace(/"/g, "'"))
   })
-  .add('asObject/small data/custom comment', async () => {
+  .add('parse/S/comment', async () => {
     const parser = new CSVParser({ comment: '//' })
-    await parser.asObject(`// comment\n${smallDataCustomComment}`)
+    await parser.parse(`// comment\n${smallDataCustomComment}`)
   })
-  .add('asObject/medium data/custom comment', async () => {
+  .add('parse/M/comment', async () => {
     const parser = new CSVParser({ comment: '//' })
-    await parser.asObject(`// comment\n${mediumDataCustomComment}`)
+    await parser.parse(`// comment\n${mediumDataCustomComment}`)
   })
-  .add('asObject/large data/custom comment', async () => {
+  .add('parse/L/comment', async () => {
     const parser = new CSVParser({ comment: '//' })
-    await parser.asObject(`// comment\n${largeDataCustomComment}`)
+    await parser.parse(`// comment\n${largeDataCustomComment}`)
   })
-  .add('asObject/small data/custom date formats', async () => {
+  .add('parse/S/date formats', async () => {
     const parser = new CSVParser({
       dateFormats: {
         date: ['YYYY/MM/DD', 'DD-MM-YYYY'],
@@ -119,9 +120,9 @@ const result = await suite
         datetime: [],
       },
     })
-    await parser.asObject(smallDataCustomDateFormats.replace(/-/g, '/'))
+    await parser.parse(smallDataCustomDateFormats.replace(/-/g, '/'))
   })
-  .add('asObject/medium data/custom date formats', async () => {
+  .add('parse/M/date formats', async () => {
     const parser = new CSVParser({
       dateFormats: {
         date: ['YYYY/MM/DD', 'DD-MM-YYYY'],
@@ -129,9 +130,9 @@ const result = await suite
         datetime: [],
       },
     })
-    await parser.asObject(mediumDataCustomDateFormats.replace(/-/g, '/'))
+    await parser.parse(mediumDataCustomDateFormats.replace(/-/g, '/'))
   })
-  .add('asObject/large data/custom date formats', async () => {
+  .add('parse/L/date formats', async () => {
     const parser = new CSVParser({
       dateFormats: {
         date: ['YYYY/MM/DD', 'DD-MM-YYYY'],
@@ -139,32 +140,23 @@ const result = await suite
         datetime: [],
       },
     })
-    await parser.asObject(largeDataCustomDateFormats.replace(/-/g, '/'))
+    await parser.parse(largeDataCustomDateFormats.replace(/-/g, '/'))
   })
-  // asArray tests
-  .add('asArray/small data', async () => {
+  // stream tests
+  .add('stream/small', async () => {
     const parser = new CSVParser()
-    await parser.asArray(smallData)
+    const stream = createChunkedStream(smallData, 1024)
+    await parser.stream(stream)
   })
-  .add('asArray/medium data', async () => {
+  .add('stream/medium', async () => {
     const parser = new CSVParser()
-    await parser.asArray(mediumData)
+    const stream = createChunkedStream(mediumData, 1024)
+    await parser.stream(stream)
   })
-  .add('asArray/large data', async () => {
+  .add('stream/large', async () => {
     const parser = new CSVParser()
-    await parser.asArray(largeData)
-  })
-  .add('asArray/small data/no header', async () => {
-    const parser = new CSVParser({ header: false })
-    await parser.asArray(smallDataNoHeader)
-  })
-  .add('asArray/medium data/no header', async () => {
-    const parser = new CSVParser({ header: false })
-    await parser.asArray(mediumDataNoHeader)
-  })
-  .add('asArray/large data/no header', async () => {
-    const parser = new CSVParser({ header: false })
-    await parser.asArray(largeDataNoHeader)
+    const stream = createChunkedStream(largeData, 1024)
+    await parser.stream(stream)
   })
   .addReporter(cli, 'after-each')
   .addReporter(file, 'after-all')

@@ -34,7 +34,7 @@ yarn add @pawel-up/csv
 
 ## 🚀 Quick Start
 
-### Parsing a CSV String into an Array of Objects
+### Parsing a CSV String
 
 ```typescript
 import { CSVParser } from '@pawel-up/csv';
@@ -43,7 +43,7 @@ const csvString = "name,age,city\nJohn Doe,30,New York\nJane Smith,25,Los Angele
 const parser = new CSVParser();
 
 async function parseCSV() {
-  const result = await parser.asObject(csvString);
+  const result = await parser.parse(csvString);
   console.log(result);
   // Output:
   // {
@@ -54,38 +54,6 @@ async function parseCSV() {
   //   ],
   //   header: ['name', 'age', 'city'],
   //   values: [
-  //     { name: 'John Doe', age: 30, city: 'New York' },
-  //     { name: 'Jane Smith', age: 25, city: 'Los Angeles' }
-  //   ]
-  // }
-}
-
-parseCSV();
-```
-
-### Parsing a CSV File into an Array of Arrays
-
-```typescript
-import { CSVParser } from '@pawel-up/csv';
-
-// Assuming you have a file input element:
-const fileInput = document.getElementById('fileInput') as HTMLInputElement;
-const file = fileInput.files[0];
-
-const parser = new CSVParser({ delimiter: ';', header: false });
-
-async function parseCSV() {
-  const result = await parser.asArray(file);
-  console.log(result);
-  // Output:
-  // {
-  //   format: [
-  //     { name: 'column_1', type: 'string', index: 0 },
-  //     { name: 'column_2', type: 'number', format: 'integer', index: 1 },
-  //     { name: 'column_3', type: 'string', index: 2 }
-  //   ],
-  //   header: [],
-  //   values: [
   //     ['John Doe', 30, 'New York'],
   //     ['Jane Smith', 25, 'Los Angeles']
   //   ]
@@ -93,6 +61,59 @@ async function parseCSV() {
 }
 
 parseCSV();
+```
+
+### Streaming CSV File Data
+
+For large CSV files, you can use the streaming functionality to process data in chunks:
+
+```typescript
+import { CSVParser } from '@pawel-up/csv';
+
+async function streamCSV() {
+  // Assuming you have a file input element:
+  const fileInput = document.getElementById('fileInput') as HTMLInputElement;
+  const file = fileInput.files[0];
+
+  const parser = new CSVParser();
+  const stream = await parser.streamFile(file);
+
+  const reader = stream.getReader();
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+    console.log('Chunk:', value);
+    // Process each chunk of data here
+    // Example:
+    // value.values.forEach(row => {
+    //   console.log(row);
+    // });
+  }
+}
+
+streamCSV();
+```
+
+Mind that the headers structure may change witch every chunk as more data becomes available to check for data types.
+
+### Streaming CSV Response
+
+```typescript
+import { CSVParser, type ParseResult } from '@pawel-up/csv'
+
+const response = await fetch("./data.csv")
+const textStream = response.body!.pipeThrough(new TextDecoderStream())
+const parser = new CSVParser()
+const stream = parser.stream(textStream)
+const reader = stream.getReader()
+const chunks: ParseResult[] = []
+while (true) {
+  const { done, value } = await reader.read()
+  if (done) break
+  chunks.push(value)
+}
 ```
 
 ## ⚙️ Configuration Options

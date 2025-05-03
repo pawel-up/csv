@@ -24,7 +24,7 @@ export interface FormatInfo {
   index: number
 }
 
-interface ParseResult {
+export interface ParseResult {
   /**
    * The detected format of the CSV data.
    * This array describes the data type and format of each column in the CSV file,
@@ -39,9 +39,6 @@ interface ParseResult {
    * Column without a name is constructed as `column_1`, `column_2`, etc (1-based index).
    */
   header: string[]
-}
-
-export interface CVSArrayParseResult extends ParseResult {
   /**
    * The parsed data from the CSV file, represented as an array of arrays.
    * Each inner array represents a row in the CSV file.
@@ -51,19 +48,7 @@ export interface CVSArrayParseResult extends ParseResult {
    * The data types of the values are determined by the `type` property in the
    * corresponding `FormatInfo` object.
    */
-  values: (string | number | boolean | null)[][]
-}
-
-export interface CVSObjectParseResult extends ParseResult {
-  /**
-   * The parsed data from the CSV file, represented as an array of objects.
-   * Each object in the array represents a row in the CSV file.
-   * The keys of each object are the column names (from the `header` array),
-   * and the values are the corresponding cell values for that row.
-   * The data types of the values are determined by the `type` property in the
-   * corresponding `FormatInfo` object.
-   */
-  values: Record<string, string | number | boolean>[]
+  values: (string | number | boolean)[][]
 }
 
 export interface DateFormats {

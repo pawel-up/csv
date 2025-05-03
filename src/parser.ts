@@ -1,55 +1,56 @@
 import { detectDataType, type DataType } from './lib/DataType.js'
 import { readFile } from './lib/File.js'
 import { CSVOptions, CSVParserOptions } from './options.js'
-import type { CVSArrayParseResult, CVSObjectParseResult, FormatInfo } from './types.js'
+import type { ParseResult, FormatInfo } from './types.js'
 
 /**
  * The `CSVParser` class provides methods for parsing CSV (Comma-Separated Values)
  * data from either a file or a string.
- * It supports automatic data type detection (string, number, boolean, date, time, datetime) and can return
- * the parsed data as either an array of arrays or an array of objects.
+ *
+ * It offers both one-time parsing via the `parse` method and streaming parsing
+ * for large files using the `stream` method. The parser automatically detects
+ * data types (string, number, boolean, date, time, datetime) and can return
+ * the parsed data as an array of arrays.  A utility method `toObject` is provided
+ * to transform the array of arrays into an array of objects, using header row
+ * values as keys.
  *
  * **Key Features:**
  *
  * - **Flexible Input:** Parses CSV data from `File` objects (e.g., from file inputs) or strings.
- * - **Automatic Data Type Detection:** Automatically detects the data type of each cell in the CSV.
- * - **Header Row Support:** Can handle CSV files with or without a header row.
- * - **Customizable Options:** Supports various options for customizing the parsing process,
- *   such as delimiter, quote character, encoding, and date formats.
- * - **Array or Object Output:** Can return the parsed data as an array of arrays (rows and cells)
- *   or an array of objects (rows with named columns).
- * - **Handles comments:** Skips lines that start with a comment character.
- * - **Handles max rows:** Can limit the number of rows to parse.
+ * - **Streaming Support:**  Handles large files efficiently with the `stream` method,
+ *   processing data in chunks.
+ * - **Automatic Data Type Detection:** Automatically infers the data type of each cell.
+ * - **Header Row Support:**  Parses files with or without a header row.  When a header
+ *   is present, it's used for column names in the object representation.
+ * - **Customizable Options:**  Allows customization of the parsing process through options
+ *   such as delimiter, quote character, comment character, encoding, date formats, and
+ *   maximum rows to parse.
+ * - **Comment Handling:** Skips lines starting with a designated comment character.
+ * - **Row Limiting:**  Limits the number of rows parsed using the `maxRows` option.
+ * - **Object Conversion:** Provides a static `toObject` method to convert the parsed
+ *   array data into a more convenient array of objects, using header values as keys.
  *
- * **Example Usage:**
+ * **Basic Usage:**
  *
  * ```typescript
- * // Parsing a CSV string into an array of objects:
- * const csvString = "name,age,city\nJohn Doe,30,New York\nJane Smith,25,Los Angeles";
- * const parser = new CSVParser();
- * const result = await parser.asObject(csvString);
- * console.log(result);
- * // Output:
- * // {
- * //   format: [
- * //     { name: 'name', type: 'string', index: 0 },
- * //     { name: 'age', type: 'number', format: 'integer', index: 1 },
- * //     { name: 'city', type: 'string', index: 2 }
- * //   ],
- * //   header: ['name', 'age', 'city'],
- * //   values: [
- * //     { name: 'John Doe', age: 30, city: 'New York' },
- * //     { name: 'Jane Smith', age: 25, city: 'Los Angeles' }
- * //   ]
- * // }
+ * import { CSVParser } from '@pawel-up/csv';
  *
- * // Parsing a CSV file into an array of arrays:
+ * // 1. Parsing from a string:
+ * const csvString = `Name,Age,City\nJohn Doe,30,New York\nJane Smith,25,Los Angeles`;
+ * const parser = new CSVParser();
+ * const result = await parser.parse(csvString);
+ * console.log(result.values);
+ * // Output:  [['John Doe', 30, 'New York'], ['Jane Smith', 25, 'Los Angeles']]
+ * console.log(CSVParser.toObject(result));
+ * // Output:  [{ Name: 'John Doe', Age: 30, City: 'New York' }, { Name: 'Jane Smith', Age: 25, City: 'Los Angeles' }]
+ *
+ * // 2. Parsing from a file (in a browser environment):
  * const fileInput = document.getElementById('fileInput') as HTMLInputElement;
  * const file = fileInput.files[0];
- * const parser = new CSVParser({ delimiter: ';', header: false });
- * const result = await parser.asArray(file);
- * console.log(result);
- * // Output:
+ * const fileParser = new CSVParser({ delimiter: ';', header: false });
+ * const fileResult = await fileParser.parse(file);
+ * console.log(fileResult);
+ * // Output (example):
  * // {
  * //   format: [
  * //     { name: 'column_1', type: 'string', index: 0 },
@@ -62,10 +63,35 @@ import type { CVSArrayParseResult, CVSObjectParseResult, FormatInfo } from './ty
  * //     ['Jane Smith', 25, 'Los Angeles']
  * //   ]
  * // }
+ *
+ * // 3. Streaming from a ReadableStream:
+ * const response = await fetch('large_data.csv');
+ * const stream = response.body;
+ * if (stream) {
+ *   const streamParser = new CSVParser();
+ *   const parsedStream = await streamParser.stream(stream.pipeThrough(new TextDecoderStream()));
+ *   const reader = parsedStream.getReader();
+ *   while (true) {
+ *     const { done, value } = await reader.read();
+ *     if (done) break;
+ *     console.log('Chunk:', value.values);
+ *   }
+ * }
  * ```
+ *
+ * **Note:**  When using `stream`, the `toObject` method is not directly applicable
+ * to the streamed chunks. You would typically process each chunk's `values` as
+ * they arrive or accumulate them for a final `toObject` conversion after the stream
+ * completes.
  */
 export class CSVParser {
   options: CSVParserOptions
+
+  protected result: ParseResult
+  private controller: TransformStreamDefaultController | undefined
+  private buffer = ''
+  private formatInitialized = false
+
   /**
    * Creates a new CSVParser instance.
    * @param options - Optional configuration options for the parser.
@@ -73,6 +99,217 @@ export class CSVParser {
    */
   constructor(options?: CSVOptions) {
     this.options = new CSVParserOptions(options)
+    this.result = {
+      format: [],
+      values: [],
+      header: [],
+    }
+  }
+
+  protected reset(): void {
+    this.result = {
+      format: [],
+      values: [],
+      header: [],
+    }
+    this.buffer = ''
+    this.formatInitialized = false
+    this.controller = undefined
+  }
+
+  /**
+   * Initiates streaming parsing of CSV data from a ReadableStream.
+   *
+   * This method takes a ReadableStream of strings as input and returns a
+   * ReadableStream of `ParseResult` objects.  The input stream should
+   * represent the CSV data, typically encoded as UTF-8.  The output stream
+   * emits `ParseResult` objects, each containing a chunk of parsed data,
+   * incrementally as the input stream is processed.
+   *
+   * @param input - A ReadableStream<string> representing the CSV data.
+   * @returns A Promise that resolves to a ReadableStream<ParseResult>,
+   *          emitting chunks of parsed data.
+   */
+  stream(input: ReadableStream<string>): ReadableStream<ParseResult> {
+    this.reset()
+
+    const transformStream = new TransformStream<string, ParseResult>({
+      transform: (chunk, controller) => this.handleChunk(chunk, controller),
+      flush: (controller) => this.handleFlush(controller),
+    })
+
+    return input.pipeThrough(transformStream)
+  }
+
+  /**
+   * Initiates streaming parsing of CSV data from a File object.
+   *
+   * This method takes a File object as input, reads its content as a
+   * ReadableStream of strings (assuming UTF-8 encoding), and then
+   * performs streaming parsing as with the `stream` method.
+   *
+   * @param file - A File object representing the CSV file.
+   * @returns A Promise that resolves to a ReadableStream<ParseResult>,
+   *          emitting chunks of parsed data.
+   */
+  streamFile(file: File): ReadableStream<ParseResult> {
+    const stream = file.stream()
+    const decodedStream = stream.pipeThrough(new TextDecoderStream(this.options.encoding))
+    return this.stream(decodedStream)
+  }
+
+  /**
+   * Handles a chunk of data from the input stream.
+   *
+   * This internal method is called by the TransformStream for each chunk of
+   * string data received from the input stream. It appends the chunk to an
+   * internal buffer and then triggers the `processBuffer` method to parse
+   * the buffered data.
+   *
+   * @param chunk - A string representing a chunk of CSV data.
+   * @param controller - The TransformStreamDefaultController for managing
+   *                     the output stream.
+   * @returns A Promise that resolves when the chunk has been processed.
+   */
+  protected async handleChunk(chunk: string, controller: TransformStreamDefaultController<ParseResult>): Promise<void> {
+    this.controller = controller
+    this.buffer += chunk
+    await this.processBuffer()
+  }
+
+  /**
+   * Handles the end of the input stream.
+   *
+   * This internal method is called by the TransformStream when the input
+   * stream has been fully consumed. It ensures that any remaining data in
+   * the buffer is processed by calling `processBuffer` with the `flush` flag
+   * set to true.  After processing, if any parsed data is available, it is
+   * enqueued to the output stream.
+   *
+   * @param controller - The TransformStreamDefaultController for managing
+   *                     the output stream.
+   * @returns A Promise that resolves when the flush operation is complete.
+   */
+  protected async handleFlush(controller: TransformStreamDefaultController<ParseResult>): Promise<void> {
+    this.controller = controller
+    if (this.buffer.length > 0) {
+      await this.processBuffer(true)
+    }
+  }
+
+  /**
+   * Reads the input string until the last newline character.
+   * @param input - The input string to read from.
+   * @returns A tuple containing the processed string and the remaining string.
+   *          The processed string is everything before the last newline,
+   *          and the remaining string is everything after the last newline.
+   *          If no newline is found, the first element of the tuple is null.
+   * @protected
+   */
+  protected readUntilLastNewline(input: string): [null | string, string] {
+    for (let i = input.length - 1; i >= 0; i--) {
+      // the first check for `\n` also handles the `\r\n` case.
+      if (input[i] === '\n' || input[i] === '\r') {
+        return [input.substring(0, i), input.substring(i + 1)]
+      }
+    }
+    return [null, input]
+  }
+
+  /**
+   * Processes the buffered CSV data.
+   *
+   * This internal method is the core of the streaming parser. It splits the
+   * buffered data into lines, parses each line into rows of values, detects
+   * data types, and updates the parsing result.
+   *
+   * The `flush` parameter indicates whether this is the final processing
+   * call at the end of the stream.  If `flush` is false, the last line in the
+   * buffer is retained, as it might be incomplete.
+   *
+   * @param flush - A boolean indicating whether this is the final
+   *                processing call. Defaults to false.
+   * @returns A Promise that resolves when the buffer has been processed.
+   */
+  protected async processBuffer(flush = false): Promise<void> {
+    // The following makes sure the parser only emits full lines
+    // and not partial lines. We read everything in the buffer until the last
+    // new line and keep the rest in the buffer.
+    let toProcess: string | null = null
+    if (flush) {
+      // we need to process everything in the buffer
+      toProcess = this.buffer
+      this.buffer = ''
+    } else {
+      const [processable, remaining] = this.readUntilLastNewline(this.buffer)
+      if (!processable) {
+        // no new line found, we can just return
+        return
+      }
+      this.buffer = remaining // keep it for the next chunk
+      toProcess = processable // this is our processable data
+    }
+    // at this point we can be sure we only have full lines in the `toProcess`
+    const lines = this.splitLines(toProcess)
+
+    const rows: DataType[][] = []
+    for (const line of lines) {
+      const trimmedLine = line.trim()
+      if (!trimmedLine || trimmedLine.startsWith(this.options.comment)) {
+        continue // Skip empty lines and comments
+      }
+
+      const row = this.parseRow(line)
+      if (row.length === 0) continue
+      rows.push(this.detectDataTypes([row])[0])
+    }
+
+    if (rows.length > 0) {
+      if (!this.formatInitialized) {
+        this.prepareHeaderData(rows)
+        this.formatInitialized = true
+      } else {
+        this.updateFormat(rows)
+      }
+
+      this.result.values.push(...rows.map((row) => row.map((cell) => cell.value)))
+
+      if (this.controller) {
+        this.controller.enqueue({ ...this.result })
+        if (this.options.maxRows && this.result.values.length >= this.options.maxRows) {
+          this.controller.terminate()
+          this.buffer = ''
+          return
+        }
+      }
+    }
+  }
+
+  /**
+   * Updates the format information with new rows.
+   *
+   * This internal method is used during streaming parsing to dynamically
+   * update the column format information as new data arrives. It handles
+   * cases where new columns are encountered or where the data type of a
+   * column changes from string to a more specific type (number, boolean, etc.)
+   * based on the data in subsequent rows.
+   *
+   * @param result - The current parsing result object.
+   * @param newRows - An array of `DataType[][]` representing the newly
+   *                  processed rows.
+   */
+  protected updateFormat(newRows: DataType[][]): void {
+    newRows.forEach((row) => {
+      row.forEach((cell, index) => {
+        if (index >= this.result.format.length) {
+          const name = `column_${index + 1}`
+          this.result.format.push({ name, type: cell.type, format: cell.format, index })
+        } else if (this.result.format[index].type === 'string' && cell.type !== 'string') {
+          this.result.format[index].type = cell.type
+          this.result.format[index].format = cell.format
+        }
+      })
+    })
   }
 
   /**
@@ -84,65 +321,33 @@ export class CSVParser {
    *
    * @param input - Either a `File` object (from a file input) or a string
    *                containing CSV data.
-   * @returns A promise that resolves to a `CVSArrayParseResult` object,
+   * @returns A promise that resolves to a `ParseResult` object,
    *          containing the parsed data, header information, and column formats.
    * @throws {Error} Throws an error if there is an issue reading the file or parsing the CSV data.
    */
-  async asArray(input: File | string): Promise<CVSArrayParseResult> {
-    const value = await this.prepare(input)
-    const format = this.parse(value)
-    const result: CVSArrayParseResult = {
-      format: [],
-      values: [],
-      header: [],
-    }
-    this.prepareHeaderData(result, format)
-    for (const item of format) {
-      result.values.push(item.map((column) => column.value))
-    }
-    return result
-  }
-
-  /**
-   * Parses a CSV file or string and returns the data as an array of objects.
-   *
-   * Each object in the array represents a row in the CSV. The keys of each
-   * object are the column names (from the header row, if present), and the
-   * values are the corresponding cell values. The data types of the values
-   * (string, number, boolean) are automatically detected.
-   *
-   * @param input - Either a `File` object (from a file input) or a string
-   *                containing CSV data.
-   * @returns A promise that resolves to a `CVSObjectParseResult` object,
-   *          containing the parsed data, header information, and column formats.
-   * @throws {Error} Throws an error if there is an issue reading the file or parsing the CSV data.
-   */
-  async asObject(input: File | string): Promise<CVSObjectParseResult> {
-    const value = await this.prepare(input)
-    const format = this.parse(value)
-    const result: CVSObjectParseResult = {
-      format: [],
-      values: [],
-      header: [],
-    }
-    this.prepareHeaderData(result, format)
+  async parse(input: File | string): Promise<ParseResult> {
+    this.reset()
+    const value = await this.normalize(input)
+    const format = this.parseInput(value)
+    this.prepareHeaderData(format)
     for (const row of format) {
-      const obj: Record<string, string | number | boolean> = {}
       const keys = new Set<string>()
+      const values: (string | number | boolean)[] = []
       row.forEach((column, columnIndex) => {
-        const name = result.header[columnIndex] || `column_${columnIndex + 1}`
-        obj[name] = column.value
+        const name = this.result.header[columnIndex] || `column_${columnIndex + 1}`
+        values.push(column.value)
         keys.add(name)
       })
-      for (const key of result.header) {
+      // now we double check the headers for any missing values
+      // extra values can only occur at the end of the row
+      for (const key of this.result.header) {
         if (!keys.has(key)) {
-          obj[key] = ''
+          values.push('')
         }
       }
-      // now we double check the headers for any missing values
-      result.values.push(obj)
+      this.result.values.push(values)
     }
-    return result
+    return this.result
   }
 
   /**
@@ -156,7 +361,7 @@ export class CSVParser {
    * @param values - The parsed data, represented as an array of arrays of `DataType`.
    * @protected
    */
-  protected prepareHeaderData(result: CVSObjectParseResult | CVSArrayParseResult, values: DataType[][]): void {
+  protected prepareHeaderData(values: DataType[][]): void {
     if (!values.length) {
       return
     }
@@ -170,7 +375,7 @@ export class CSVParser {
     header.forEach((column, index) => {
       const name = this.options.header && column.value ? String(column.value) : `column_${index + 1}`
       if (this.options.header) {
-        result.header.push(name)
+        this.result.header.push(name)
       }
       // We need to compute it on the fly because the value may be empty
       const firstWithValue = values.find((row) => !!row[index])
@@ -184,7 +389,7 @@ export class CSVParser {
       if (format) {
         tmp.format = format
       }
-      result.format.push(tmp)
+      this.result.format.push(tmp)
     })
   }
 
@@ -198,7 +403,7 @@ export class CSVParser {
    * @returns A promise that resolves to the CSV data as a string.
    * @protected
    */
-  protected async prepare(input: File | string): Promise<string> {
+  protected async normalize(input: File | string): Promise<string> {
     let content: string
     if (typeof input === 'string') {
       content = input
@@ -220,7 +425,7 @@ export class CSVParser {
    *          represents a cell value with its detected type.
    * @protected
    */
-  protected parse(input: string): DataType[][] {
+  protected parseInput(input: string): DataType[][] {
     const lines = this.splitLines(input)
     const processed: string[][] = []
 
@@ -300,5 +505,44 @@ export class CSVParser {
       typedData.push(typedRow)
     }
     return typedData
+  }
+
+  /**
+   * Converts the parsed data to an array of objects.
+   * Each object represents a row, with keys corresponding to the column names
+   * from the header row (if present) or default column names (e.g., "column_1", "column_2", ...).
+   * The values are the parsed data, with types determined during parsing.
+   *
+   * @param input - The parsed data as a `ParseResult`, typically obtained from the `parse` method.
+   * @return An array of objects, where each object represents a row with named columns.
+   *
+   * @example
+   * ```typescript
+   * const parser = new CSVParser();
+   * const result = await parser.parse("Name,Age\nAlice,30\nBob,25");
+   * const objects = CSVParser.toObject(result);
+   * console.log(objects);
+   * // Output:  [{ Name: 'Alice', Age: 30 }, { Name: 'Bob', Age: 25 }]
+   * ```
+   */
+  static toObject(input: ParseResult): Record<string, string | number | boolean>[] {
+    const result: Record<string, string | number | boolean>[] = []
+    for (const row of input.values) {
+      const keys = new Set<string>()
+      const obj: Record<string, string | number | boolean> = {}
+      row.forEach((column, columnIndex) => {
+        const name = input.header[columnIndex] || `column_${columnIndex + 1}`
+        obj[name] = column
+        keys.add(name)
+      })
+      // now we double check the headers for any missing values
+      for (const key of input.header) {
+        if (!keys.has(key)) {
+          obj[key] = ''
+        }
+      }
+      result.push(obj)
+    }
+    return result
   }
 }

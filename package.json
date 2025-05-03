@@ -1,6 +1,6 @@
 {
   "name": "@pawel-up/csv",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "CSV tools for the native web platform",
   "license": "MIT",
   "main": "./build/src/index.js",

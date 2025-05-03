@@ -26,32 +26,21 @@ export async function getLatestBenchmark(): Promise<SuiteReport | undefined> {
   }
 }
 
-export function generateCSV(rows: number, columns: number, withHeader = true): string {
-  const header = withHeader ? generateHeader(columns) : ''
-  const data = generateData(rows, columns)
-  return withHeader ? `${header}\n${data}` : data
-}
-
-function generateHeader(columns: number): string {
-  const headerRow = Array.from({ length: columns }, (_, i) => `column_${i + 1}`).join(',')
-  return headerRow
-}
-
-function generateData(rows: number, columns: number): string {
-  const dataRows = Array.from({ length: rows }, () => {
-    const row = Array.from({ length: columns }, () => generateRandomValue()).join(',')
-    return row
+export function createChunkedStream(data: string, chunkSize: number): ReadableStream<string> {
+  return new ReadableStream({
+    start(controller) {
+      let offset = 0
+      function push() {
+        if (offset >= data.length) {
+          controller.close()
+          return
+        }
+        const chunk = data.substring(offset, offset + chunkSize)
+        offset += chunkSize
+        controller.enqueue(chunk)
+        push()
+      }
+      push()
+    },
   })
-  return dataRows.join('\n')
-}
-
-function generateRandomValue(): string {
-  const random = Math.random()
-  if (random < 0.33) {
-    return Math.floor(Math.random() * 1000).toString() // Integer
-  } else if (random < 0.66) {
-    return (Math.random() * 100).toFixed(2) // Decimal
-  } else {
-    return Math.random().toString(36).substring(2, 10) // Random string
-  }
 }
